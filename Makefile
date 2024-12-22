@@ -2,7 +2,7 @@
 
 prog_bins = progs/basic.smc
 tool_bins = tools/img2bitplanes
-resource_bins = resources/letters_4bit.chr
+resource_bins = resources/letters_2bit.chr
 
 all: tools progs resources
 progs: $(prog_bins)
@@ -11,12 +11,13 @@ resources: $(resource_bins)
 
 progs/basic.smc: progs/basic.link progs/basic.obj
 	wlalink -R -v2 $< $@
+progs/basic.obj: include/init.asm resources/letters_2bit.chr
+
+%.obj: %.asm
+	wla-65816 -v2 -I include -I resources -o $@ $<
 
 tools/%: tools/%.cpp
 	g++ -g -o $@ $^
-
-%.obj: %.asm
-	wla-65816 -v2 -o $@ $^
 
 %_2bit.chr: %.png tools/img2bitplanes
 	tools/img2bitplanes -b 2 $< $@
