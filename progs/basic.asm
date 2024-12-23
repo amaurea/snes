@@ -1,4 +1,5 @@
 .INCLUDE "init.asm"
+.INCLUDE "copy.asm"
 
 ; Start with our header. We'll use LoRom, which is common, simple,
 ; and not any worse than HiRom. We won't include the ram in the memorymap,
@@ -61,9 +62,8 @@
 	EmptyHandler:
 		rti
 
-	; SNES initialization
 	Start:
-		BasicInit
+		InitCPU      ; CPU mode and stack
 		jsr InitSnes ; Configure hardware to generic starting condition
 		jsr InitGame ; Game-specific initialization
 		jmp MainLoop
@@ -84,9 +84,13 @@
 .SECTION "MainSection" SEMIFREE
 	InitGame:
 		; Set graphics mode 1 (2 16-color BG, 1 4-color BG). This is a
-		; common and straightforward mode
+		; common and straightforward mode. Currently this enables the
+		; screen. Should separate that that for later, so I can still
+		; write to vram for the later graphics trasfers
 		jsr InitMode1
-		; 
+		; Set up vram
+		; 1. Copy letters to BG3 chr
+		vram_upload $3000 letters_chr :letters_chr $1000 0
 
 		; Set a background color for testing purposes
 		stz $2121
@@ -95,6 +99,7 @@
 		lda #$ff
 		sta $2122
 
+		jsr EnableScreen
 
 		rts
 

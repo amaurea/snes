@@ -11,7 +11,7 @@ resources: $(resource_bins)
 
 progs/basic.smc: progs/basic.link progs/basic.obj
 	wlalink -R -v2 $< $@
-progs/basic.obj: include/init.asm resources/letters_2bit.chr
+progs/basic.obj: include/init.asm include/copy.asm resources/letters_2bit.chr
 
 %.obj: %.asm
 	wla-65816 -v2 -I include -I resources -o $@ $<
