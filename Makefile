@@ -28,4 +28,4 @@ clean: tidy
 	rm -rf $(prog_bins) $(tool_bins) $(resource_bins)
 
 tidy:
-	rm -rf progs/*.obj libs/*.obj
+	rm -rf progs/*.obj libs/*.obj stderr.txt stdout.txt

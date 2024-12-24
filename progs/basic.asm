@@ -27,6 +27,8 @@
 	VERSION       $00 ; 0=1.00, 1=1.01, etc.
 .ENDSNES
 
+.COMPUTESNESCHECKSUM
+
 ; Meaning of character strings
 .ASCTABLE
 MAP '0' TO '9' =  0
@@ -101,11 +103,10 @@ MAP ' ' = 69
 	stack instanceof array size $100
 .ENDS
 
-;.RAMSECTION "WorkRam" SLOT 1 ORG $1fff SEMISUBFREE
-;	idlecount      dw
-;	budget_vblank  dw
-;	budget_main    dw
-;.ENDS
+.RAMSECTION "WorkRam" SLOT 1 ORG $1fff SEMISUBFREE
+	frame dw
+	num   dw
+.ENDS
 
 .SECTION "MainSection" SEMIFREE
 	InitGame:
@@ -132,21 +133,64 @@ MAP ' ' = 69
 		sta prt_mode
 		print greeting 12 ;greeting.length
 
+		;lda #$12
+		;jsr print_hexbyte
+
+		;lda #asc(' ')
+		;putc
+		;print_hex prt_pos 2
+		;lda #asc(' ')
+		;putc
+		;print_hex prt_pos 2
+		;lda #asc(' ')
+		;putc
+		;print_hex prt_pos 2
+
+		;rep #$30
+		;lda #$1234
+		;sta num
+		;print_hex num, 4
+
 		; only bg 3 for now
 		lda #%00000100
 		sta $212c
 
 		jsr EnableScreen
 
+
+		; Initialize variables
+		rep #$20
+		stz frame
+
 		rts
 
 	VBlank:
 		; Update tilemap based on ram version
-		vram_upload $800 text_buffer :text_buffer $800 0
+		vram_upload $800 text_buffer :text_buffer _sizeof_text_buffer 0
+		rep #$20
+		inc frame
+
 		rts
 
 	MainLoop:
-		; Loop forever
+
+		sep #$20
+		; Set palette to palette 1
+		lda #$00
+		sta prt_mode
+
+		; Set cursor to start of second row
+		set_cursor $20
+		; Print frame and frame number
+		print str_frame _sizeof_str_frame
+		lead_print_hex frame _sizeof_frame
+
+		; Wait for VBlank to finish
+		lda frame
+		-
+		cmp frame
+		beq -
+
 		bra MainLoop
 
 .ENDS
@@ -154,6 +198,7 @@ MAP ' ' = 69
 .SECTION "DataSection" SEMIFREE
 	letters_chr: .INCBIN "letters_2bit.chr"
 	greeting: .ASC "Hello World!"
+	str_frame: .ASC "Frame "
 	;greeting: .DB ASC('H'), $00, ASC('e'), $00, ASC('l'), $00, ASC('l'), $00, ASC('o'), $00, ASC(' '), $00, ASC('W'), $00, ASC('o'), $00, ASC('r'), $00, ASC('l'), $00, ASC('d'), $00, ASC('!'), $00
 	;greeting: .DW $0000, $0001, $0002, $0003, $0004, $0005, $0006, $0007, $0008, $0009, $000a, $000b, $000c, $000d, $000e, $000f
 	;greeting: .REPEAT $400
