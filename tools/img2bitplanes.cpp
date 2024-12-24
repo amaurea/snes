@@ -18,81 +18,6 @@ typedef std::unique_ptr<byte,decltype(&free)> byte_ptr;
 typedef std::unique_ptr<FILE,decltype(&file_closer)> file_ptr;
 file_ptr open_file(const char * fname, const char * mode) { return file_ptr(fopen(fname, mode), &file_closer); }
 
-#if 0
-// dumps the color palette into an assembly file for SNES
-// The first color is assumed to be transparent.
-void dump_palette(char * palettename, png_structp & png_ptr, png_infop & info_ptr)
-{
-	int size;
-	png_color * palette;
-	png_get_PLTE(png_ptr, info_ptr, &palette, &size);
-	FILE * file = fopen(palettename, "w");
-	fprintf(file, ".define %slength $%02hx\n", palettename, size);
-	fprintf(file, "%s: .dw ", palettename);
-
-	for(int i = 0; i < size; i++)
-	{
-		unsigned short color = (palette[i].blue >> 3);
-		color <<= 5;
-		color += (palette[i].green >> 3);
-		color <<= 5;
-		color += (palette[i].red >> 3);
-		fprintf(file, "$%04hx", color);
-		if(i < size-1) fprintf(file, ", ");
-	}
-	fprintf(file, "\n");
-}
-
-void dump_data(char * dataname, int colbit, png_structp & png_ptr, png_infop & info_ptr)
-{
-	int width = png_get_image_width(png_ptr, info_ptr),
-		height = png_get_image_height(png_ptr, info_ptr);
-	int bits = png_get_bit_depth(png_ptr, info_ptr);
-	FILE * file = fopen(dataname, "w");
-	fprintf(file, ".define %slength $%04hx\n", dataname, width*height/8*(1 << colbit));
-	fprintf(file, "%s: .dw ", dataname);
-	png_bytepp rows = png_get_rows(png_ptr, info_ptr);
-	int times = colbit;
-	// run through the 8x8 blocks in the image
-	for(int j = 0; j+8 <= height; j += 8)
-	for(int i = 0; i+8 <= width; i += 8)
-	{
-		bool last1 = (i + 8 >= width && j + 8 >= height);
-		unsigned char high, low;
-		// run through each pair of bits in the colors.
-		for(int k = 0; k < times; k+=2)
-		{
-			bool last2 = (last1 && k+2 >= times);
-			// run through each row in the block
-			for(int m = 0; m < 8; m++)
-			{
-				int y = m+j;
-				bool last3 = (last2 && m+1 == 8);
-				high = 0; low = 0;
-				// run through each column in the block
-				for(int l = 0; l < 8; l++)
-				{
-					int tmp = (i+l)*bits;
-					int bytepos = tmp/8, bitpos = tmp%8;
-					unsigned char val = rows[y][bytepos] << bitpos;
-					val >>= 8-bits;
-					if(bitpos + bits >= 8)
-						val += rows[y][bytepos+1] >> 16-bitpos-bits;
-					low <<= 1; high <<= 1;
-					high += (val >> k) & 1;
-					low += (val >> k+1) & 1;
-				}
-				unsigned short res = low;
-				res <<= 8; res += high;
-				fprintf(file, "$%04hx", res);
-				if(!last3) fprintf(file, ", ");
-				else fprintf(file, "\n");
-			}
-		}
-	}
-}
-#endif
-
 void get_tile(color * data, int i0, int stride, int nmax, color * tile) {
 	for(int y = 0; y < 8; y++)
 	for(int x = 0; x < 8; x++) {
@@ -117,14 +42,15 @@ bool find_palette_index(const vector<color> & palette, const vector<color> & cti
 }
 vector<byte> idx2bitplane(const vector<byte> & idxtile, int nbit) {
 	int nbyte = idxtile.size() * nbit / 8;
-	vector<byte> bitplane(nbyte);
+	vector<byte> bitplane;
+	bitplane.reserve(nbyte);
 	for(int bitpair = 0; bitpair < nbit/2; bitpair++) {
 		for(int y = 0; y < 8; y++) {
 			byte row[2] = {0,0};
 			for(int x = 0; x < 8; x++) {
 				byte v  = idxtile[8*y+x];
-				row[0] |= (v>>(bitpair*2+0) & 1) << x;
-				row[1] |= (v>>(bitpair*2+1) & 1) << x;
+				row[0] |= (v>>(bitpair*2+0) & 1) << (7-x);
+				row[1] |= (v>>(bitpair*2+1) & 1) << (7-x);
 			}
 			bitplane.push_back(row[0]);
 			bitplane.push_back(row[1]);

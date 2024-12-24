@@ -1,6 +1,3 @@
-.INCLUDE "init.asm"
-.INCLUDE "copy.asm"
-
 ; Start with our header. We'll use LoRom, which is common, simple,
 ; and not any worse than HiRom. We won't include the ram in the memorymap,
 ; at least not for now, since I'm not sure how it would work with all the
@@ -30,6 +27,18 @@
 	VERSION       $00 ; 0=1.00, 1=1.01, etc.
 .ENDSNES
 
+; Meaning of character strings
+.ASCTABLE
+MAP '0' TO '9' =  0
+MAP 'A' TO 'Z' = 10
+MAP 'a' TO 'z' = 36
+MAP '.' = 62
+MAP ',' = 63
+MAP '!' = 64
+MAP '?' = 65
+MAP ' ' = 69
+.ENDA
+
 ; Our interrupt vectors. The snes starts in emulation mode and jumps to the RESET
 ; interrupt where we will put our initialization. During this we will switch to
 ; native mode, so the native interrupts are the ones that matter for all but RESET.
@@ -54,6 +63,16 @@
 .BANK 0
 .ORG 0
 
+; This struct is used as a workaround for me not finding a way
+; to indicate how big a ram section should be
+.STRUCT array
+	dummy: db
+.ENDST
+
+.INCLUDE "init.asm"
+.INCLUDE "copy.asm"
+.INCLUDE "text.asm"
+
 ; Our empty handler. We force it to start at $0000 in the rom since that's the default
 ; interrupt target. Given this, we could ommit all unused interrupts in the vector
 ; tables, above, but we'll leave them there now to be tidy.
@@ -75,11 +94,18 @@
 		rti
 .ENDS
 
-.RAMSECTION "WorkRam" SLOT 1 ORG $1fff SEMISUBFREE
-	idlecount      dw
-	budget_vblank  dw
-	budget_main    dw
+; Reserve space for the stack. This won't prevent the stack from
+; overflowing, but will at least prevent wla from putting other
+; stuff there
+.RAMSECTION "Stack" SLOT 1 ORG $1eff FORCE
+	stack instanceof array size $100
 .ENDS
+
+;.RAMSECTION "WorkRam" SLOT 1 ORG $1fff SEMISUBFREE
+;	idlecount      dw
+;	budget_vblank  dw
+;	budget_main    dw
+;.ENDS
 
 .SECTION "MainSection" SEMIFREE
 	InitGame:
@@ -90,21 +116,33 @@
 		jsr InitMode1
 		; Set up vram
 		; 1. Copy letters to BG3 chr
-		vram_upload $3000 letters_chr :letters_chr $1000 0
+		vram_upload $9000 letters_chr :letters_chr $2000 0
+		;; 2. Copy tilemap to BG3 tiles
+		;vram_upload $800 greeting    :greeting    $800 0
+		;vram_upload $0800 greeting    :greeting     $10 0
+		; 3. Copy palettes to cgram
+		cgram_upload $00 textpals :textpals $0010 0
 
-		; Set a background color for testing purposes
-		stz $2121
-		lda #$0f
-		sta $2122
-		lda #$ff
-		sta $2122
+		; Try printing
+		rep #$20
+		lda #text_buffer
+		sta prt_pos
+		sep #$20
+		lda #$04
+		sta prt_mode
+		print greeting 12 ;greeting.length
+
+		; only bg 3 for now
+		lda #%00000100
+		sta $212c
 
 		jsr EnableScreen
 
 		rts
 
 	VBlank:
-		; Put video updating DMAs here
+		; Update tilemap based on ram version
+		vram_upload $800 text_buffer :text_buffer $800 0
 		rts
 
 	MainLoop:
@@ -115,4 +153,16 @@
 
 .SECTION "DataSection" SEMIFREE
 	letters_chr: .INCBIN "letters_2bit.chr"
+	greeting: .ASC "Hello World!"
+	;greeting: .DB ASC('H'), $00, ASC('e'), $00, ASC('l'), $00, ASC('l'), $00, ASC('o'), $00, ASC(' '), $00, ASC('W'), $00, ASC('o'), $00, ASC('r'), $00, ASC('l'), $00, ASC('d'), $00, ASC('!'), $00
+	;greeting: .DW $0000, $0001, $0002, $0003, $0004, $0005, $0006, $0007, $0008, $0009, $000a, $000b, $000c, $000d, $000e, $000f
+	;greeting: .REPEAT $400
+	;	.DB $01, $40
+	;.ENDR
+
+	textpals:
+		; Palette 1: black text white border, and a light blue background
+		.DB %11100111,%01111100 $00,$00, $ff,$ff, $00,$00
+		; Palette 2: black text red border
+		.DB $00,$00, $00,$00, $00,$1f, $00,$00
 .ENDS

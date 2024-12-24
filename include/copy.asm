@@ -77,3 +77,26 @@
 	stx $420b
 	plp
 .ENDM
+
+.MACRO cgram_upload ARGS dest, src, bank, nbyte, slot
+	php
+	; First do the 16-bit stuff
+	rep #$10
+	ldx #src   ; ram  src address
+	stx $4302 + $10*slot
+	ldx #nbyte ; nbyte to transfer
+	stx $4305 + $10*slot
+	; Then the 8-bit stuff
+	sep #$10
+	ldx #$02   ; DMA mode. write, advance, +0,+0 write
+	stx $4300
+	ldx #$22   ; specify write to cgram
+	stx $4301 + $10*slot
+	ldx #bank  ; ram  src bank
+	stx $4304 + $10*slot
+	ldx #dest  ; cgram destination
+	stx $2121
+	ldx #$00 | (1<<slot) ; do the transfer
+	stx $420b
+	plp
+.ENDM
