@@ -27,8 +27,6 @@
 	VERSION       $00 ; 0=1.00, 1=1.01, etc.
 .ENDSNES
 
-.COMPUTESNESCHECKSUM
-
 ; Meaning of character strings
 .ASCTABLE
 MAP '0' TO '9' =  0
@@ -65,12 +63,6 @@ MAP ' ' = 69
 .BANK 0
 .ORG 0
 
-; This struct is used as a workaround for me not finding a way
-; to indicate how big a ram section should be
-.STRUCT array
-	dummy: db
-.ENDST
-
 .INCLUDE "init.asm"
 .INCLUDE "copy.asm"
 .INCLUDE "text.asm"
@@ -100,7 +92,7 @@ MAP ' ' = 69
 ; overflowing, but will at least prevent wla from putting other
 ; stuff there
 .RAMSECTION "Stack" SLOT 1 ORG $1eff FORCE
-	stack instanceof array size $100
+	stack ds $100
 .ENDS
 
 .RAMSECTION "WorkRam" SLOT 1 ORG $1fff SEMISUBFREE

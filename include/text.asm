@@ -8,10 +8,12 @@
 .ENDS
 
 .RAMSECTION "TextBuffer" SLOT 1 ORG $800 SEMIFREE
-	text_buffer instanceof array size $800
+	text_buffer ds $800
 .ENDS
 
 .SECTION "Text" SEMIFREE
+
+	chr_space: .ASC " "
 
 	; Write a character in the accumulator to the buffer. Overwrites A
 	.MACRO putc

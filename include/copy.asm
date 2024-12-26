@@ -53,10 +53,17 @@
 ; Making a subroutine for this doesn't make sense, since setting up the
 ; arguments would be as much work as just doing the DMA call manually.
 ; Better as a macro, since it can take arguments
+; The weakness of these macros is that src and dest must immediate values.
+; We'll see if that becomes a problem
 
 ; Clobbers X. 8/16-bit mode preserved
 .MACRO vram_upload ARGS dest, src, bank, nbyte, slot
 	php
+	phb      ; save old DBR
+	sep #$20 ; set DBR to 0 to access the hardware
+	lda #$00
+	pha
+	plb
 	; First do the 16-bit stuff
 	rep #$10
 	ldx #dest  ; vram destination
@@ -75,11 +82,17 @@
 	stx $4304 + $10*slot
 	ldx #$00 | (1<<slot) ; do the transfer
 	stx $420b
+	plb ; restore old DBR
 	plp
 .ENDM
 
 .MACRO cgram_upload ARGS dest, src, bank, nbyte, slot
 	php
+	phb      ; save old DBR
+	sep #$20 ; set DBR to 0 to access the hardware
+	lda #$00
+	pha
+	plb
 	; First do the 16-bit stuff
 	rep #$10
 	ldx #src   ; ram  src address
@@ -98,5 +111,6 @@
 	stx $2121
 	ldx #$00 | (1<<slot) ; do the transfer
 	stx $420b
+	plb ; restore old DBR
 	plp
 .ENDM
