@@ -17,7 +17,7 @@
 ; The SNES header. Mainly sets our rom type and name
 .SNESHEADER
 	ID   "SNES"
-	NAME "BASIC                " ; should be exactly 21 chr long
+	NAME "Advent1              " ; should be exactly 21 chr long
 	LOROM
 	SLOWROM           ; Normal rom read speed
 	ROMSIZE       $05 ; 1<<ROMSIZE kB, So 8=256kB, 9=512kB, A=1MB, B=2MB, C=4MB
@@ -69,44 +69,6 @@ MAP ' ' = 69
 .INCLUDE "text.asm"
 .INCLUDE "sort.asm"
 
-; Set the data bank register. Surprisingly cumbersome!
-.MACRO set_dbr ARGS dbr
-	php
-	sep #$20
-	lda #dbr
-	pha
-	plb
-	plp
-.ENDM
-
-; Macro for copying arrays to be sorted from rom to ram.
-; The two arrays are interleaved, so it's easiest to just
-; make this one-off function here. nbyte is the number of
-; bytes for each of the two lists.
-.MACRO deinterleave_words ARGS dest1, dest2, src_long, nbyte
-	php
-	rep #$30
-	; x will index source array, y the dest arrays
-	lda #nbyte.w
-	tay
-	asl ; src_long array twice as long
-	tax
-	-
-	dey
-	dey
-	beq + ; done once y becomes negative
-	dex
-	dex
-	lda src_long.l,x
-	sta dest2,y
-	dex
-	dex
-	lda src_long.l,x
-	sta dest1,y
-	bra -
-	+
-.ENDM
-
 ; Our empty handler. We force it to start at $0000 in the rom since that's the default
 ; interrupt target. Given this, we could ommit all unused interrupts in the vector
 ; tables, above, but we'll leave them there now to be tidy.
@@ -142,8 +104,16 @@ MAP ' ' = 69
 .ENDS
 
 .RAMSECTION "WorkRam" SLOT 1 ORG $1fff SEMISUBFREE
-	frame  dw
-	status dw
+	frame       dw
+	status      dw
+	prev_frame  dw
+	prev_status dw
+	prev_srt_step dw
+	cur_line      dw
+	frame_diff    dw
+	diffsum       dw
+	diffsum_arr1  dw
+	diffsum_arr2  dw
 .ENDS
 
 .SECTION "DataSection"
@@ -151,15 +121,18 @@ MAP ' ' = 69
 	advent_data: .INCBIN "advent1_nums.bin" FSIZE advent_size2
 	.DEFINE advent_size (advent_size2>>1)
 	; Define progres report strings
-	progress_desc0: .ASC "copy "
-	progress_desc1: .ASC "sort1"
-	progress_desc2: .ASC "sort2"
-	progress_desc3: .ASC "diffs"
-	progress_desc4: .ASC "done "
-	progress_desc: .dw progress_desc0, progress_desc1, progress_desc2, progress_desc3, progress_desc4
-	bleh: .db 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1
-	progress_desc_size: .dw 5,5,5,5,5
-	moo: .ASC "Moooo!!"
+	str_copy:  .ASC "copy    "
+	str_copy_size:  .dw "copy    ".length
+	str_sort1: .ASC "sort1   "
+	str_sort1_size: .dw "sort1   ".length
+	str_sort2: .ASC "sort2   "
+	str_sort2_size: .dw "sort2   ".length
+	str_diffs: .ASC "diffs   "
+	str_diffs_size: .dw "diffs   ".length
+	str_total: .ASC "total  "
+	str_total_size: .dw "total  ".length
+	str_result:.ASC "result "
+	str_result_size:.dw "result ".length
 
 	textpals:
 		; Palette 1: black text white border, and a light blue background
@@ -175,6 +148,17 @@ MAP ' ' = 69
 .ENDS
 
 .SECTION "MainSection"
+
+	; Set the data bank register. Surprisingly cumbersome!
+	.MACRO set_dbr ARGS dbr
+		php
+		sep #$20
+		lda #dbr
+		pha
+		plb
+		plp
+	.ENDM
+
 	InitGame:
 		; Set graphics mode 1 (2 16-color BG, 1 4-color BG). This is a
 		; common and straightforward mode. Currently this enables the
@@ -201,16 +185,21 @@ MAP ' ' = 69
 		rep #$20
 		stz frame
 		stz status
+		stz prev_frame
+		stz prev_status
+		stz prev_srt_step
+		stz cur_line
+		set_cursor 0
 
 		rts
 
 	VBlank:
 		; We don't need high ram values here, but we do need the rom
-		php
 		phb
 		pha
 		phx
 		phy
+		php
 
 		set_dbr 0
 		; Update frame count
@@ -220,86 +209,199 @@ MAP ' ' = 69
 		; a normal main loop this time
 		jsr update_status
 		; Update tilemap based on ram version
-		vram_upload $800 text_buffer :text_buffer $100 0
+		vram_upload $800 text_buffer :text_buffer $800 0
 		; Return control to normal code
 
+		plp
 		ply
 		plx
 		pla
 		plb
-		plp
 		rts
 
 	update_status:
 		php
-		; Set print mode, currently just palette
-		sep #$20
-		lda #$00
-		sta prt_mode
-		; Move to start of line
-		set_cursor 0
 
-		; Print our overall status
+		; Only print frame diffs for status < 4
 		rep #$30
 		lda status
-		asl ; use as word index
-		tax
-		lda progress_desc_size,x
-		tay
-
-		lda progress_desc,x
-		tax
-		sep #$20
-		jsr print
-
-		; If we're currently sorting, then print our sorting stage
-		rep #$20
-		lda status
-		cmp #$1.w
-		bmi +
-		cmp #$3.w
+		cmp #4.w
 		bpl +
-			print chr_space 1
-			rep #$20
-			lda srt_step
-			asl
-			tax
-			lda srt_step_desc_size,x
-			tay
-			lda srt_step_desc,x
-			tax
-			sep #$20
-			jsr print
-			;print chr_space 1
-			;; Also print our progress inside the step
-			;lead_print_hex srt_prog 2
+		jsr print_framediff
 		+
 		plp
 		rts
 
-	Main:
-		; Will be working with high ram here. This means that any
-		; rom access will need long pointers or dbr changes
-		set_dbr $7e
+	; Macro for copying arrays to be sorted from rom to ram.
+	; The two arrays are interleaved, so it's easiest to just
+	; make this one-off function here. nbyte is the number of
+	; bytes for each of the two lists.
+	.MACRO deinterleave_words ARGS dest1, dest2, src_long, nbyte
+		php
+		rep #$30
+		; x will index source array, y the dest arrays
+		lda #nbyte.w
+		tay
+		asl ; src_long array twice as long
+		tax
+		-
+		dey
+		dey
+		bmi + ; done once y becomes negative
+		dex
+		dex
+		lda src_long.l,x
+		sta dest2,y
+		dex
+		dex
+		lda src_long.l,x
+		sta dest1,y
+		bra -
+		+
+	.ENDM
 
-		rep #$20
+	; Handle 24-bit numbers by replacing inc inc with inc inc inc etc, and by
+	; doing the comparisons in two steps - first with the upper 2 bytes, then,
+	; if not yet decided, with the low two bytes. This overlaps a bit, but that's
+	; harmless.
+
+	print_framediff:
+		php
+		; Backspace 4 characters, then overwrite them with relative frame count
+		move_cursor_x #$fffc.w
+		rep #$30
+		lda frame
+		sec
+		sbc prev_frame
+		sta frame_diff
+		lead_print_hex frame_diff 2
+		plp
+		rts
+
+	; abs(A) 16-bit
+	abs_word:
+		cmp #0.w
+		bpl +
+		eor #$ffff.w
+		ina
+		+
+		rts
+
+	; Count the sum of absolute differences of the 16-bit entries in arr1 and arr2,
+	; both of which are nbyte long. The result is written to the diffsum variable.
+	; call with 16-bit AXY. arr1 and arr2 in diffsum_arr1, diffsum_arr2 respectively.
+	; nbyte in Y. Clobbers A and Y. Result is written to diffsum
+	diffsum_words:
+		lda $1235
+		stz diffsum
+		-
+		dey
+		dey
+		; calc diff
+		lda (diffsum_arr1),y
+		sec
+		sbc (diffsum_arr2),y
+		; absolute value
+		jsr abs_word
+		; Add to our tally
+		clc
+		adc diffsum
+		sta diffsum
+		cpy #$0.w
+		bne -
+		rts
+
+	.MACRO diffsum_words ARGS arr1, arr2, nbyte
+		pha
+		phy
+		php
+		rep #$30
+		lda #arr1.w
+		sta diffsum_arr1
+		lda #arr2.w
+		sta diffsum_arr2
+		ldy #nbyte.w
+		jsr diffsum_words
+		plp
+		ply
+		pla
+	.ENDM
+
+	Main:
+		rep #$30
 		stz status
 		stz srt_step
+		stz frame
+		set_print_mode 0
+		set_cursor 0
+
 		; 1. Extract interleaved list of values to ram.
 		; Need a long pointer for the rom data here
+		; Oh no! The actual values in the txt file don't fit in 16 bits!
+		; We need at least 18 bits. Bleh! We'll ignore that for now
+		lda frame
+		sta prev_frame
+		print str_copy str_copy_size
+		repc ASC(' ') 4
+		set_dbr $7e
 		deinterleave_words list1 list2 advent_data.l advent_size2
+		set_dbr $00
+		jsr print_framediff
+
+		; 2. Sort the lists
 		lda #1.w
 		sta status
-		; 2. Sort the lists
+		lda frame
+		sta prev_frame
+		move_cursor_yleft 1
+		print str_sort1 str_sort1_size
+		repc ASC(' ') 4
+		set_dbr $7e
 		lda $1234
 		heap_sort_words list1 advent_size
-		lda #2
-		sta status
-		;heap_sort_words list2 advent_size
-		;lda #3
-		; 3. Count differences
+		set_dbr $00
+		jsr print_framediff
 
-		; Done with everything. Loop forever
+		lda #2.w
+		sta status
+		lda frame
+		sta prev_frame
+		move_cursor_yleft 1
+		print str_sort2 str_sort2_size
+		repc ASC(' ') 4
+		set_dbr $7e
+		heap_sort_words list2 advent_size
+		set_dbr $00
+		jsr print_framediff
+
+		; 3. Count differences
+		lda #3.w
+		sta status
+		lda frame
+		sta prev_frame
+		move_cursor_yleft 1
+		print str_diffs str_diffs_size
+		repc ASC(' ') 4
+		set_dbr $7e
+		diffsum_words list1 list2 advent_size
+		set_dbr $00
+		jsr print_framediff
+
+		; 4. Print result
+		lda $1234
+		lda #4.w
+		sta status
+		lda frame
+		sta prev_frame
+		move_cursor_yleft 1
+		print str_total str_total_size
+		repc ASC(' ') 1
+		lead_print_hex prev_frame 2
+		move_cursor_yleft 1
+		print str_result str_result_size
+		repc ASC(' ') 1
+		lead_print_hex diffsum 2
+
 		--
 		bra --
 

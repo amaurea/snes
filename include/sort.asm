@@ -1,24 +1,16 @@
 ; Our work variables should be on the direct page
 .RAMSECTION "Sorting" SLOT 1 ORG $ff SEMISUBFREE
-	srt_base  dw
-	srt_nbyte dw
-	srt_root  dw
-	srt_tmp   dw
-	srt_step  dw
-	srt_prog  dw
-	srt_sift_nbyte dw
+	srt_ptr    dw ; pointer to array to sort
+	srt_nbyte  dw ; length of this array, in bytes
+	srt_step   dw ; which step in the sorting progress we're at
+	sift_start dw ; start offset of array to sift
+	sift_end   dw ; end   offset of array to sift
+	sift_root  dw ; offset of currently sifted sub-tree
+	swap_tmpw  dw ; temporary word used when swapping values
 .ENDS
 
 ; 16-bit heap sort
 .SECTION "Sort" SEMIFREE
-
-	; Define strings for the sort state and sort progress
-	srt_step_desc0: .ASC "arr2heap "
-	srt_step_desc1: .ASC "heap2sort"
-	srt_step_desc2: .ASC "done     "
-	srt_step_desc: .dw srt_step_desc0, srt_step_desc1, srt_step_desc2
-	srt_step_desc_size: .dw 9, 9, 9 ; No automatic way to get this?!
-
 	; replace offset A with the offset of its parent
 	.MACRO iparent_words
 		lsr
@@ -37,7 +29,7 @@
 		rep #$20
 		lda #state
 		sta srt_step
-		php
+		plp
 	.ENDM
 
 	; Call with 16-bit AXY. A contains array start, X the number of *bytes*,
@@ -57,7 +49,7 @@
 		.16BIT
 		; we will do indirect accesses through this variable
 		; indices will be byte indices!
-		sta srt_base
+		sta srt_ptr
 		stx srt_nbyte
 		set_srt_step 0
 		jsr arr2heap_words
@@ -66,95 +58,113 @@
 		set_srt_step 2
 		rts
 
-	; Called with srt_base set to the array ptr and srt_nbyte set to its size in bytes
+	; Called with srt_ptr set to the array ptr and srt_nbyte set to its size in bytes
 	; Leaves the array a heap
 	arr2heap_words:
 		.16BIT
-		; start = index of first leaf node
+		; start = one before first leaf node
 		lda srt_nbyte
+		sta sift_end
 		dea
 		dea
 		iparent_words
-		ina
-		ina
-		; Loop while start > 0
-		-
-		stx srt_prog ; update sort progress variable
-		beq +
-		dea
-		dea ; start = last non-heap node
+		- ; Loop while start >= 0
+		; sift down [start:]
+		sta sift_start
 		jsr sift_down_words
-		bra -
+		; update zero flag for A
+		sec
+		sbc #$02.w
+		bcs -
 		+
 		rts
 
-	; called with srt_base pointing to a heap with size srt_nbyte
+	; called with srt_ptr pointing to a heap with size srt_nbyte
 	heap2sort_words:
 		.16BIT
-		ldx srt_nbyte ; X = end_index*2
+		ldy srt_nbyte ; Y = end_index*2
 		-
-		stx srt_prog  ; update sort progress
-		cpx #$2       ; while end_index > 1
-		bmi +
-			dex         ; end_index -= 1
-			dex
+		cpy #$4.w     ; while end_index > 1 (end_index >= 2)
+		bcc +
+			dey         ; end_index -= 1
+			dey
 			; swap a[end] with a[0]
-			lda (srt_base),x
-			tay
-			lda (srt_base)
-			sta (srt_base),x
-			tya
-			sta (srt_base)
-			; sift down for the part of the array we have
+			lda (srt_ptr),y
+			tax
+			lda (srt_ptr)
+			sta (srt_ptr),y
+			txa
+			sta (srt_ptr)
+			; sift down [:end]
+			stz sift_start
+			sty sift_end
 			jsr sift_down_words
 		bra -
 		+
 		rts
 
-	; called with A = start, X = nbyte Preserves A
+	; Helper function for arr2heap and heap2sort. Restores the
+	; heap condition. Call with sift_start and sift_end set.
+	; Preserves PAXY
 	sift_down_words:
 		.16BIT
 		pha
-		stx srt_sift_nbyte
+		phx
+		phy
+		php
+		; We will have X as the main offset and Y as the secondary offset
+		; in most of this
+		ldx sift_start
 		-
-		sta srt_root
-		ichild_words ; A = first child
-		cmp srt_sift_nbyte ; nbyte
-		bpl +; exit if we've run out of elements
-			tax ; first child offset in X
+		; sift_root = current sub-tree root
+		stx sift_root
+		; X = index of first child
+		txa
+		ichild_words
+		tax
+		cpx sift_end
+		bcs +; exit if we've run out of elements
+			; Value of first child. Can't do indirect lookups with x, so temporarily use y
+			txy
+			lda (srt_ptr),y
 			; Does the second child exist?
-			ina
-			ina
-			cmp srt_sift_nbyte
-			bpl ++
-				; Yes. Store its value in Y
-				tay
-				; Load the first child and compare its value to the second child
-				lda (srt_base),x
-				cmp (srt_base),y
-				bpl ++
+			iny
+			iny
+			cpy sift_end
+			bcs ++
+				; Yes. Compare its value to the first child. NB! Unsigned!
+				cmp (srt_ptr),y
+				bcs ++
 					; second child is bigger, so use it instead
+					lda (srt_ptr),y
 					tyx
-					lda (srt_base),x
 			++
 			; Ok, X now has the offset of the biggest child, and A it value.
 			; Is that bigger than our root?
-			ldy srt_root
-			cmp (srt_base),y
-			bmi +
-				; root root was smaller, so swap them
-				sta srt_tmp
-				lda (srt_base),y
-				sta (srt_base),x
-				lda srt_tmp
-				sta (srt_base),y
-				txa
+			ldy sift_root
+			cmp (srt_ptr),y
+			bcc + ; skip if child < root. Unnecessary but harmless swap if equal
+				; root was smaller, so swap them
+				sta swap_tmpw
+				lda (srt_ptr),y ; load root value
+				txy
+				sta (srt_ptr),y ; store it in child
+				ldy sift_root
+				lda swap_tmpw   ; load old child value
+				sta (srt_ptr),y ; store it in root
+				; next iteration we sift down from the location of child, so
+				; it becomes our new root. This happens at the top of the root
 				bra -
 			+
 			; If we get here, root has the biggst element, so we have
 			; fulfilled the heap criterion
+			plp
+			ply
 			plx
 			pla
 			rts
+
+; A >= B: carry set
+; A  < B: carry cleared
 
 .ENDS
