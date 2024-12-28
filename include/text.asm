@@ -15,6 +15,10 @@
 
 	chr_space: .ASC " "
 
+	; The character printing part of this should be rewritten to
+	; have the string and length in variables in ram instead of
+	; all this register juggling.
+
 	; Write a character in the accumulator to the buffer. Overwrites A
 	.MACRO putc
 		sta (prt_pos)
@@ -27,9 +31,12 @@
 	; Write a character in the accumulator to the buffer. If it is zero
 	; and prt_nonz is false, print prt_fillc instead. If non-zero, set prt_nonz to true.
 	lead_putc:
+		phx
+		php
+		sep #$10
 		bne +
 			; We get here if A is zero. Skip printing if prt_nonz is false
-			lda prt_nonz
+			ldx prt_nonz
 			bne ++
 			lda prt_fillc ; use fill character instead
 			++
@@ -37,9 +44,11 @@
 			bra +++
 		+ ; we get here if A is non-zero. print, and set prt_nonz to true
 		putc
-		lda #$01.b
-		sta prt_nonz
+		ldx #$01.b
+		stx prt_nonz
 		+++
+		plp
+		plx
 		rts
 
 	; Write X copies of the character in A. 8-bit A, 16-bit X
@@ -191,6 +200,7 @@
 
 	; Add y to x, 16-bit. Clobbers A and prt_tmp. Surprisingly complicated!
 	; Would it be better to use the stack? Not familiar with ,s adddressing yet
+	; Actually, should have just used normal ram. Much simpler.
 	xplusy:
 		php
 		rep #$20

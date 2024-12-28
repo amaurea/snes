@@ -118,7 +118,7 @@ MAP ' ' = 69
 
 .SECTION "DataSection"
 	letters_chr: .INCBIN "letters_2bit.chr" FSIZE letters_size
-	advent_data: .INCBIN "advent1_nums.bin" FSIZE advent_size2
+	advent_data: .INCBIN "advent1_nums_16.bin" FSIZE advent_size2
 	.DEFINE advent_size (advent_size2>>1)
 	; Define progres report strings
 	str_copy:  .ASC "copy    "
