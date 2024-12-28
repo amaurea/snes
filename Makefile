@@ -3,7 +3,7 @@
 
 prog_bins = progs/basic.smc progs/advent1_16.smc progs/advent1_32.smc
 tool_bins = tools/img2bitplanes tools/nums2bin_16 tools/nums2bin_32
-resource_bins = resources/letters_2bit.chr
+resource_bins = resources/letters_2bit.chr resources/letters_4bit.chr resources/advent1_nums_16.bin resources/advent1_nums_32.bin
 
 all: tools progs resources
 progs: $(prog_bins)
@@ -38,4 +38,4 @@ clean: tidy
 	rm -rf $(prog_bins) $(tool_bins) $(resource_bins)
 
 tidy:
-	rm -rf progs/*.obj libs/*.obj stderr.txt stdout.txt
+	rm -rf progs/*.obj libs/*.obj include/*.lst stderr.txt stdout.txt
