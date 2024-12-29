@@ -11,7 +11,10 @@
 	text_buffer ds $800
 .ENDS
 
-.SECTION "Text" SEMIFREE
+.SECTION "Strings"
+.ENDS
+
+.SECTION "Text"
 
 	chr_space: .ASC " "
 
@@ -100,11 +103,15 @@
 		plp
 	.ENDM
 
-	;.MACRO prints ARGS str
-	;	_str: .ASC str
-	;	print _str str.length
-	;	.UNDEFINE _str
-	;.ENDM
+	; Print one-off string. Handy, but leaves string literals
+	; interspaced with the code wherever it's used, so the executable
+	; woudl look messy. Would be better if it could be made to place
+	; the strings in a dedicated area.
+	.MACRO prints ISOLATED ARGS str
+		bra +
+		_str: .ASC str
+		+ print _str str.length
+	.ENDM
 
 	; Number printing. Interesting cases:
 	; 1. arbitrary long number at memory location. Similar to print above

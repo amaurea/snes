@@ -401,8 +401,7 @@ MAP ' ' = 69
 		; We need at least 18 bits. Bleh! We'll ignore that for now
 		lda frame
 		sta prev_frame
-		print str_copy str_copy_size
-		repc ASC(' ') 4
+		prints "copy       "
 		lda $1234
 		set_dbr $7e
 		deinterleave_32 list1 list2 advent_data.l advent_size2
@@ -415,8 +414,7 @@ MAP ' ' = 69
 		lda frame
 		sta prev_frame
 		move_cursor_yleft 1
-		print str_sort1 str_sort1_size
-		repc ASC(' ') 4
+		prints "sort1      "
 		lda $1234
 		set_dbr $7e
 		heap_sort_32 list1 advent_size
@@ -428,9 +426,8 @@ MAP ' ' = 69
 		lda frame
 		sta prev_frame
 		move_cursor_yleft 1
-		print str_sort2 str_sort2_size
-		repc ASC(' ') 4
-		lda $1234
+		lda $1237
+		prints "sort2      "
 		set_dbr $7e
 		heap_sort_32 list2 advent_size
 		set_dbr $00
@@ -442,8 +439,7 @@ MAP ' ' = 69
 		lda frame
 		sta prev_frame
 		move_cursor_yleft 1
-		print str_diffs str_diffs_size
-		repc ASC(' ') 4
+		prints "diffs      "
 		set_dbr $7e
 		diffsum_32 list1 list2 advent_size
 		set_dbr $00
@@ -456,12 +452,10 @@ MAP ' ' = 69
 		lda frame
 		sta prev_frame
 		move_cursor_yleft 1
-		print str_total str_total_size
-		repc ASC(' ') 1
+		prints "total  "
 		lead_print_hex prev_frame 2
 		move_cursor_yleft 1
-		print str_result str_result_size
-		repc ASC(' ') 1
+		prints "result "
 		lead_print_hex diffsum 4
 		; Convert to decimal
 		lda $1234
@@ -472,9 +466,17 @@ MAP ' ' = 69
 		jsr bin2dec_32
 		; Print decimal result
 		move_cursor_yleft 1
-		print str_decimal str_decimal_size
-		repc ASC(' ') 1
+		prints "dec"
 		lead_print_hex dec_dec 6
+
+		; These prits were originally done like
+		;print str_diffs str_diffs_size
+		;repc ASC(' ') 4
+		; Less elegant, but more tidy, as it keeps the
+		; strings in their own section instead of interleaving
+		; them wth the code in the executable, requiring
+		; a jump to get past each one
+
 
 		--
 		bra --
